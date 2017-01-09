@@ -1,0 +1,161 @@
+/*
+generic gradle initialization enabling artifactory repository, as well as publishing capabilities
+@author ryan@koancode.com
+*/
+
+
+// set the below in grade.properties
+/*
+artifactoryUser=
+artifactoryPassword=
+artifactoryContextUrl=
+artifactoryRepo=
+artifactoryPublishRepo=
+*/
+
+
+initscript{
+  repositories {
+      jcenter() // XXX if you want to be a proxy, you have to hard code it here as system.properties are not available here
+    }
+ buildscript{
+ dependencies {
+       classpath "org.jfrog.buildinfo:build-info-extractor-gradle:3.0.1"
+ }
+
+ }
+}
+
+
+allprojects {
+  buildscript { // likely this section is redundant due to initscript section, but just in case projects want other items
+      repositories {
+          //maven { url 'http://jcenter.bintray.com' }
+          maven {
+              // http://stackoverflow.com/questions/24920311/peer-not-authenticated-error-in-artifactory-plugin-jenkins
+              // http://stackoverflow.com/questions/11936685/how-to-obtain-the-location-of-cacerts-of-the-default-java-installation
+              // authentication in ~/.gradle/gradle.properties
+              credentials {
+              username artifactoryUser
+              password artifactoryPassword
+              }
+                url "$artifactoryContextUrl/$artifactoryRepo"
+
+          }
+      }
+  }
+
+
+
+
+    apply plugin: 'maven-publish'
+//  apply plugin: 'com.jfrog.artifactory' //https://www.jfrog.com/confluence/display/RTF/Gradle+Artifactory+Plugin#GradleArtifactoryPlugin-UsingtheCorrectPluginID
+//  http://stackoverflow.com/questions/32313997/apply-a-gradle-plugin-with-a-common-configuration-to-all-projects
+    // XXX sensitive to class renaming
+    apply plugin: org.jfrog.gradle.plugin.artifactory.ArtifactoryConfigurationsGradle2Plugin
+    apply plugin: org.jfrog.gradle.plugin.artifactory.ArtifactoryPublicationsGradle2Plugin
+
+    artifactory{
+    contextUrl = artifactoryContextUrl
+    publish {
+        repository{
+            repoKey = artifactoryPublishRepo
+            username = artifactoryUser
+            password = artifactoryPassword
+        }
+    }
+
+    }
+
+  repositories {
+      maven {
+          // http://stackoverflow.com/questions/24920311/peer-not-authenticated-error-in-artifactory-plugin-jenkins
+          // http://stackoverflow.com/questions/11936685/how-to-obtain-the-location-of-cacerts-of-the-default-java-installation
+          // authentication in ~/.gradle/gradle.properties
+          credentials {
+              username artifactoryUser
+              password artifactoryPassword
+          }
+          url "$artifactoryContextUrl/$artifactoryRepo"
+
+      }
+  }
+
+
+
+
+  afterEvaluate { project ->
+        def groovyProject = project.plugins.hasPlugin('groovy')
+        def javaProject = project.plugins.hasPlugin('java')
+
+
+        //project.apply plugin: 'org.jfrog.artifactory' // special ones not possible, have to use classname
+
+        if (javaProject) {
+            // Add Checkstyle plugin.
+            project.apply plugin: 'checkstyle'
+            checkstyle {
+              toolVersion = '6.19'
+              configFile = file("misc/checkstyle/google_checks.xml")
+              ignoreFailures = true
+            }
+
+            // Task to download common Checkstyle configuration
+            // from company intranet.
+            task downloadCheckstyleConfig(type: DownloadFileTask) {
+                description = 'Download google Checkstyle configuration'
+
+                url = 'https://raw.githubusercontent.com/checkstyle/checkstyle/master/src/main/resources/google_checks.xml'
+                destinationFile = checkstyle.configFile
+            }
+
+            // For each Checkstyle task we make sure
+            // the company Checkstyle configuration is
+            // first downloaded.
+            tasks.withType(Checkstyle) {
+                it.dependsOn 'downloadCheckstyleConfig'
+            }
+
+            // add pmd and find bugs
+            project.apply plugin: 'findbugs'
+            project.apply plugin: 'pmd'
+            findbugs {
+                ignoreFailures = true
+            }
+            pmd {
+                ignoreFailures = true
+            }
+            tasks.withType(FindBugs) {
+                reports {
+                    xml.enabled = true
+                    html.enabled = false
+                }
+            }
+            tasks.withType(JavaCompile){
+              options.encoding = "utf-8"
+            }
+
+
+        }
+
+        if (groovyProject) {
+            // Add Codenarc plugin.
+            project.apply plugin: 'codenarc'
+        }
+
+    }
+
+}
+//http://mrhaki.blogspot.jp/2012/10/gradle-goodness-init-script-for-adding.html
+class DownloadFileTask extends DefaultTask {
+    @Input
+    String url
+
+    @OutputFile
+    File destinationFile
+
+    @TaskAction
+    def downloadFile() {
+        destinationFile.bytes = new URL(url).bytes
+    }
+}
