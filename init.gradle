@@ -1,6 +1,8 @@
 /*
 generic gradle initialization enabling artifactory repository, as well as publishing capabilities
 @author ryan@koancode.com
+Update with 
+curl -o ~/.gradle/init.gradle https://raw.githubusercontent.com/KoanCode/init.gradle/master/init.gradle
 */
 
 
